@@ -182,9 +182,10 @@ sub check_zone {
 	    print STDERR 's' if $opt_d;
 	    print "SOA=". $rr->mname ."	contact=". $rr->rname ."\n";
 	    # basic address check.  No "@", and user.dom.ain (two or more dots)
-	    if (($rr->rname =~ /@/)||!($rr->rname =~ /\..*\./)) {
+            my $rname = (split(/\s+/, $rr->rdstring))[1];
+	    if (($rname =~ /@/)||!($rname =~ /\..*\./)) {
 		&printerr("WARN", "SOA contact name (". 
-		    $rr->rname .") is invalid\n");
+		    $rname .") is invalid\n");
 	    }
         } elsif ($rr->type eq "PTR") {
             print STDERR 'p' if $opt_d;
