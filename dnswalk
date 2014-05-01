@@ -44,8 +44,11 @@ if (! -d $basedir) {
 	mkdir($basedir,0777) || die "FAIL: Cannot create $basedir: $!\n";
 }
 
+use Text::CSV;
+my $csv = Text::CSV->new();
+
 &dowalk($domain);
-print STDERR "$num_error{'FAIL'} failures, $num_error{'WARN'} warnings, $num_error{'BAD'} errors.\n";
+#print STDERR "$num_error{'FAIL'} failures, $num_error{'WARN'} warnings, $num_error{'BAD'} errors.\n";
 exit $num_error{'BAD'};
 
 sub dowalk {
@@ -176,14 +179,15 @@ sub check_zone {
 	# complain about invalid chars only for mail names
         if ((($rr->type eq "A") || ($rr->type eq "MX")) && (!$opt_i) &&
 	    ($rr->name =~ /[^\*][^-A-Za-z0-9.]/)) {
-            &printerr("WARN", $rr->name .": invalid character(s) in name\n");
+            &printerr("WARN", $domain, $rr, $rr->name .": invalid character(s) in name\n");
         }
         if ($rr->type eq "SOA") {
 	    print STDERR 's' if $opt_d;
-	    print "SOA=". $rr->mname ."	contact=". $rr->rname ."\n";
+            #print "SOA=". $rr->mname ."	contact=". $rr->rname ."\n";
+            printerr("OK", $domain, $rr, "contact is " . $rr->rname);
 	    # basic address check.  No "@", and user.dom.ain (two or more dots)
 	    if (($rr->rname =~ /@/)||!($rr->rname =~ /\..*\./)) {
-		&printerr("WARN", "SOA contact name (". 
+		&printerr("WARN", $domain, $rr, "SOA contact name (".
 		    $rr->rname .") is invalid\n");
 	    }
         } elsif ($rr->type eq "PTR") {
@@ -202,15 +206,15 @@ sub check_zone {
 #                   }
 #                   else {
                         if (!$name) {
-                            &printerr("WARN", $rr->name
+                            &printerr("WARN", $domain, $rr, $rr->name
 				." PTR ". $rr->ptrdname .": unknown host\n");
                         }
                         elsif (!&equal($name,$rr->ptrdname)) {
-                            &printerr("WARN", $rr->name 
+                            &printerr("WARN", $domain, $rr, $rr->name
 			      ." PTR ". $rr->ptrdname .": CNAME (to $name)\n");
                         }    
                         elsif (!&matchaddrlist($rr->name)) {
-                            &printerr("WARN", $rr->name
+                            &printerr("WARN", $domain, $rr, $rr->name
 			     ." PTR ". $rr->ptrdname .": A record not found\n");
                         }
 #                   }
@@ -224,16 +228,16 @@ sub check_zone {
 	    if (!$name) {
 		# hack - allow RFC 1101 netmasks encoding
 		if ($rr->address !=~ /^255/) {
-		    &printerr("WARN", $rr->name ." A ".
+		    &printerr("WARN", $domain, $rr, $rr->name ." A ".
 			$rr->address .": no PTR record\n");
 		}
 	    }
 	    elsif ($opt_F && !&equal($name,$rr->name)) {
 		# Filter out "hostname-something" (like "neptune-le0")
-		if (index(split (/\./, $rr->name, 2) . "-", 
+		if (index(split (/\./, $rr->name, 2) . "-",
 			    split (/\./, $name, 2)) == -1 ) {
-			&printerr("WARN", $rr->name ." A ". 
-			    $rr->address .": points to $name\n") 
+			&printerr("WARN", $domain, $rr, $rr->name ." A ".
+			    $rr->address .": points to $name\n")
 			    if ((split(/\./,$name))[0] ne "localhost");
 		}
 	    }
@@ -244,7 +248,7 @@ sub check_zone {
 		}
 		elsif (($glues{$rr->address} eq $rr->name) &&
 			(!&equal($lastns,$domain))) {
-		    &printerr("WARN", $rr->name
+		    &printerr("WARN", $domain, $rr, $rr->name
 			.": possible duplicate A record (glue of $lastns?)\n");
 		}
 	    }
@@ -255,7 +259,7 @@ sub check_zone {
             &checklamer($rr->name,$rr->nsdname) if ($main'opt_l);
 	    # check for bogusnesses like NS->IP addr
 	    if (&isipv4addr($rr->nsdname)) {
-		&printerr("BAD", $rr->name
+		&printerr("BAD", $domain, $rr, $rr->name
 			." NS ". $rr->nsdname .": Nameserver must be a hostname\n");
 	    }
             ($name, $aliases, $addrtype, $length,
@@ -266,10 +270,10 @@ sub check_zone {
 #            }
 #            else {
                 if (!$name) {
-                    &printerr("BAD", $rr->name
+                    &printerr("BAD", $domain, $rr, $rr->name
 			." NS ". $rr->nsdname .": unknown host\n");
                 } elsif (!&equal($name,$rr->nsdname)) {
-                    &printerr("BAD", $rr->name
+                    &printerr("BAD", $domain, $rr, $rr->name
 			." NS ". $rr->nsdname .": CNAME (to $name)\n");
                 }
 #            }
@@ -277,7 +281,7 @@ sub check_zone {
             print STDERR 'm' if $opt_d;
             # check to see if object of mx is real
 	    if (&isipv4addr($rr->exchange)) {
-		&printerr("BAD", $rr->name
+		&printerr("BAD", $domain, $rr, $rr->name
 			." MX ". $rr->exchange .": Mail exchange must be a hostname\n");
 	    }
             ($name, $aliases, $addrtype, $length,
@@ -288,11 +292,11 @@ sub check_zone {
 #            }
 #            else {
                 if (!$name) {
-                    &printerr("WARN", $rr->name
+                    &printerr("WARN", $domain, $rr, $rr->name
 			." MX ". $rr->exchange .": unknown host\n");
                 }
                 elsif (!&equal($name,$rr->exchange)) {
-                    &printerr("WARN", $rr->name
+                    &printerr("WARN", $domain, $rr, $rr->name
 			." MX ". $rr->exchange .": CNAME (to $name)\n");
                 }
 #            }
@@ -301,7 +305,7 @@ sub check_zone {
             ($name, $aliases, $addrtype, $length,
 		    @addrs)=gethostbyname($rr->cname);
 	    if (&isipv4addr($rr->cname)) {
-		&printerr("BAD", $rr->name
+		&printerr("BAD", $domain, $rr, $rr->name
 			." CNAME ". $rr->cname .": alias must be a hostname\n");
 	    }
 #            if (!(($name, $aliases, $addrtype, $length,
@@ -310,10 +314,10 @@ sub check_zone {
 #            }
 #            else {
                 if (!$name) {
-                    &printerr("WARN", $rr->name
+                    &printerr("WARN", $domain, $rr, $rr->name
 			." CNAME ". $rr->cname .": unknown host\n");
                 } elsif (!&equal($name,$rr->cname)) {
-                    &printerr("WARN", $rr->name
+                    &printerr("WARN", $domain, $rr, $rr->name
 			." CNAME ". $rr->cname .": CNAME (to $name)\n");
                 }
 #            }
@@ -325,9 +329,13 @@ sub check_zone {
 
 # prints an error message, suppressing duplicates
 sub printerr {
-    my ($level, $err)=@_;
+    my ($level, $domain, $rr, $err)=@_;
+    my $msg = $err; chomp $msg;
+    my @cols = ($level, $domain, $rr->name, $rr->type, $msg);
     if ($errlist{$err}==undef) {
-	print "$type: $err";
+        $csv->print(\*STDOUT, \@cols);
+        print "\n";
+        #print "$level: $err";
 	$num_error{$level}++;
 	print STDERR "!" if $opt_d;
 	$errlist{$err}=1;
