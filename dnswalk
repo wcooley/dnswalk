@@ -325,10 +325,10 @@ sub check_zone {
 
 # prints an error message, suppressing duplicates
 sub printerr {
-    my ($type, $err)=@_;
+    my ($level, $err)=@_;
     if ($errlist{$err}==undef) {
 	print "$type: $err";
-	$num_error{$type}++;
+	$num_error{$level}++;
 	print STDERR "!" if $opt_d;
 	$errlist{$err}=1;
     } else {
